@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LEConfig>
+  <Profiles>
+    <Profile Name="Multisim compatibility en-US" Guid="ffb361ae-febe-4cdb-aff4-0294d2623d1a" MainMenu="false">
+      <Parameter></Parameter>
+      <Location>en-US</Location>
+      <Timezone>China Standard Time</Timezone>
+      <RunAsAdmin>false</RunAsAdmin>
+      <RedirectRegistry>true</RedirectRegistry>
+      <IsAdvancedRedirection>false</IsAdvancedRedirection>
+      <RunWithSuspend>false</RunWithSuspend>
+    </Profile>
+  </Profiles>
+</LEConfig>

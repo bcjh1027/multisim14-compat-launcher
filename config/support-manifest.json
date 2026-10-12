@@ -1,0 +1,45 @@
+{
+  "SchemaVersion": 2,
+  "SupportedProductMajor": 14,
+  "CandidateMinorVersions": [0, 1, 2, 3],
+  "FixedLibraryAccessMinimumFileVersion": "14.3.1500.0",
+  "VerifiedBuilds": [
+    {
+      "Name": "Multisim 14.0.593",
+      "ProductVersion": "14.0.0.0",
+      "FileVersion": "14.0.593.0",
+      "MultisimSha256": "2DAB05A8C2F97A872BA0A999C5F86544CF3E94CAD819551E580E287F8540D1DE",
+      "LibraryAccessSha256": "6E952305A2D38831D246C76B93199817975979FDF4ECA34FB0866E20422F4DDB",
+      "WidgetLibrarySha256": "7AC3E67BA8F13E5587E18F170520F014E228CD85BA96FC79CC7FAFAF491EE27E",
+      "VerifiedEnvironment": "Windows 11 25H2 build 26200.9457, native zh-CN, Locale Emulator 2.5.0.1 en-US profile",
+      "VerifiedAt": "2026-10-11"
+    }
+  ],
+  "KnownFixedLibraryAccess": [
+    {
+      "Version": "14.3.1500.0",
+      "Sha256": "1270453B8ED94FDBD4BB554493898BB036EA45DC989A99B5AC603AB270F7A68B"
+    }
+  ],
+  "RuntimePackage": {
+    "Name": "Locale Emulator",
+    "Version": "2.5.0.1",
+    "ArchiveName": "Locale.Emulator.2.5.0.1.zip",
+    "ReleaseUrl": "https://github.com/xupefei/Locale-Emulator/releases/download/v2.5.0.1/Locale.Emulator.2.5.0.1.zip",
+    "ReleaseSha256": "808FF584426D52CC775AD6406DA00622F454BE95BD4C8FBCA42EEF4B7235AD5C",
+    "SourceUrl": "https://github.com/xupefei/Locale-Emulator/archive/refs/tags/v2.5.0.1.zip",
+    "SourceSha256": "411529EF52F4E5EFC03E3A5B6750B3B372A2AC9917383CC39C8181B47B075ACF",
+    "CoreSourceUrl": "https://github.com/xupefei/Locale-Emulator-Core/archive/ae7160dc5deb97947396abcd784f9b98b6ee38b3.zip",
+    "CoreSourceSha256": "80040EAB31970EC1381BFA57A2C00B507501487EFAC0220DBD3CD8FB37007941",
+    "License": "LGPL-3.0-only",
+    "ProfileGuid": "ffb361ae-febe-4cdb-aff4-0294d2623d1a"
+  },
+  "RuntimeFiles": [
+    { "Path": "LEProc.exe", "Sha256": "2A81CB20B5B705D84416FD8B1CD9A819B1CAFAECCC0C1E23C289884310EC0461" },
+    { "Path": "LoaderDll.dll", "Sha256": "82FAE0F44F4CA0C9C37907DF74CEF2415EEB5FAE1CF8D4F36F34FFCAF7E3CC0C" },
+    { "Path": "LocaleEmulator.dll", "Sha256": "C79C175FDAD174AA46A72197D148316299A56F950AAAB1B84930D09EE1084A88" },
+    { "Path": "LECommonLibrary.dll", "Sha256": "6EDBB48B891E3EE830E7B487F352D90044474A757905FF49D3B2ABFDB980C211" },
+    { "Path": "LEVersion.xml", "Sha256": "F9C090E0A586F2F5FC83DB529E505C84570E399A850B7DE79D86896D90F6C811" }
+  ],
+  "ForbiddenRuntimeFiles": ["LEUpdater.exe", "LEInstaller.exe", "LEGUI.exe"]
+}

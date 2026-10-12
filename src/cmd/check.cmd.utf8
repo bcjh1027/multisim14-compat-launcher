@@ -1,0 +1,44 @@
+@echo off
+rem SPDX-License-Identifier: MIT
+rem Multisim 兼容检查：只读。收集系统信息并运行启动器的全部检查（不启动 Multisim），
+rem 结果同时写入 logs\check-latest.txt，方便反馈问题时直接发给维护者。
+rem 本文件发布时为 GBK + CRLF（见 tools\Build-Release.ps1）。
+setlocal EnableExtensions DisableDelayedExpansion
+title Multisim 14.0 兼容检查
+
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+set "OUT=%ROOT%\logs\check-latest.txt"
+if not exist "%ROOT%\logs" mkdir "%ROOT%\logs" >nul 2>&1
+
+(
+    echo ===== Multisim 14.0 兼容检查 =====
+    echo 时间：%date% %time%
+    echo 安装目录："%ROOT%"
+    echo.
+    echo --- 系统（只读） ---
+    ver
+    for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber 2^>nul ^| findstr /i "CurrentBuildNumber"') do echo 版本号：%%a
+    for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v UBR 2^>nul ^| findstr /i "UBR"') do echo 修订号 UBR：%%a
+    for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Nls\Language" /v InstallLanguage 2^>nul ^| findstr /i "InstallLanguage"') do echo 系统安装语言：%%a
+    for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage" /v ACP 2^>nul ^| findstr /i "ACP"') do echo ANSI 代码页：%%a
+    echo.
+    echo --- 启动器检查（不会启动 Multisim） ---
+    set "MSCOMPAT_NOPAUSE=1"
+    call "%ROOT%\Multisim兼容启动.cmd" /check
+    echo 启动器检查退出码：%errorlevel%
+    echo.
+    echo --- 已有进程 ---
+    tasklist /fi "imagename eq multisim.exe" /nh
+    echo.
+    echo ===== 完成 =====
+) > "%OUT%" 2>&1
+
+type "%OUT%"
+echo.
+echo 以上内容已保存到：
+echo   "%OUT%"
+echo 反馈问题时请把这个文件一起发给维护者（里面只有系统版本和文件哈希，没有个人文件内容）。
+echo.
+pause
+exit /b 0

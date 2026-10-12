@@ -1,0 +1,16 @@
+* text=auto
+*.ps1 text eol=crlf
+*.psm1 text eol=crlf
+*.json text eol=lf
+*.md text eol=lf
+*.xml text eol=lf
+*.txt text eol=lf
+*.yml text eol=lf
+# 双击入口的 cmd 源文件：仓库里是 UTF-8 + LF，不能直接双击运行。
+# tools\Build-Release.ps1 会把它们转成 GBK + CRLF 后写进发布包。
+# 原因：中文 Windows 的 cmd 在 UTF-8 + chcp 65001 下会错误切分含中文的行，实测不可用。
+*.utf8 text eol=lf
+*.png binary
+*.exe binary
+*.dll binary
+*.zip binary

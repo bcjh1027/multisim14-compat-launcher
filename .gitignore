@@ -1,0 +1,14 @@
+# 第三方二进制和源码归档不进 Git，只出现在 Release 附件里
+runtime/
+vendor/
+build/
+dist/
+# 本机运行产物
+logs/
+diagnostics/
+*.lnk
+*.tmp
+*.dmp
+*.wer
+.vs/
+.vscode/

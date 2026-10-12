@@ -1,0 +1,181 @@
+@echo off
+rem SPDX-License-Identifier: MIT
+rem Multisim 14.0 兼容启动器（非官方）。只做一件事：用 Locale Emulator 的 en-US 配置启动 multisim.exe。
+rem 不修改系统区域、系统 DLL、NI 目录、注册表、数据库、许可证。不使用 PowerShell。
+rem 本文件发布时为 GBK + CRLF（见 tools\Build-Release.ps1）；不要用 UTF-8 保存后直接运行。
+rem 编写约定：echo 文本里不要出现 大于号 小于号 竖线 与号 脱字符 百分号，cmd 会把它们当成重定向或转义。
+rem 参数：/check 只做全部检查，不启动 Multisim。
+setlocal EnableExtensions DisableDelayedExpansion
+title Multisim 14.0 兼容启动器
+
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+set "RT=%ROOT%\runtime\locale-emulator"
+set "GATE=%ROOT%\config\cmd-gate.txt"
+set "LOGDIR=%ROOT%\logs"
+set "LEGUID=ffb361ae-febe-4cdb-aff4-0294d2623d1a"
+set "MS="
+set "BAD=0"
+set "RC=0"
+set "CHECKONLY="
+if /i "%~1"=="/check" set "CHECKONLY=1"
+if defined MULTISIM_COMPAT_DRYRUN set "CHECKONLY=1"
+
+echo.
+echo  Multisim 14.0 兼容启动器（非官方）
+echo  只提供 en-US 区域环境，不修改系统，不处理授权。
+echo.
+
+if not exist "%GATE%" (
+    call :fail "缺少 config\cmd-gate.txt，安装不完整。请重新运行安装脚本。"
+    goto :end
+)
+if not exist "%RT%\LEProc.exe" (
+    call :fail "缺少 runtime\locale-emulator\LEProc.exe，安装不完整。请重新运行安装脚本。"
+    goto :end
+)
+
+rem ---- 1. 找到 multisim.exe：先用安装时记录的路径，失效就重新读 NI 注册表（只读）
+if exist "%ROOT%\config\multisim-path.txt" (
+    set /p MS=<"%ROOT%\config\multisim-path.txt"
+)
+if defined MS if not exist "%MS%" set "MS="
+if defined MS for %%i in ("%MS%") do if /i not "%%~nxi"=="multisim.exe" set "MS="
+if not defined MS call :findms
+if not defined MS (
+    call :fail "没有找到 Multisim 14.0 的安装路径。请先安装 Multisim 14.0，或把 multisim.exe 的完整路径写进 config\multisim-path.txt。"
+    goto :end
+)
+if not exist "%MS%" (
+    call :fail "multisim.exe 不存在。"
+    echo   路径："%MS%"
+    goto :end
+)
+for %%i in ("%MS%") do set "MSDIR=%%~dpi"
+set "MSDIR=%MSDIR:~0,-1%"
+
+rem ---- 2. 不重复启动：已有 Multisim 进程时兼容环境不会生效
+call :isrunning
+if not errorlevel 1 (
+    call :fail "Multisim 已经在运行。请先关闭它再用本启动器打开，否则兼容环境不会生效。"
+    goto :end
+)
+
+rem ---- 3. 目标旁不能有 multisim.exe.le.config（会覆盖本启动器的隔离配置）
+if exist "%MS%.le.config" (
+    call :fail "multisim.exe 旁存在 .le.config 文件，会覆盖兼容配置，已拒绝启动。"
+    echo   路径："%MS%.le.config"
+    goto :end
+)
+
+rem ---- 4. 三个 NI 文件必须与已验证的构建完全一致
+call :sha "%MS%" H1
+call :sha "%MSDIR%\LibraryAccess.dll" H2
+call :sha "%MSDIR%\WidgetLibrary.dll" H3
+findstr /i /b /l /c:"B,%H1%,%H2%,%H3%," "%GATE%" >nul 2>&1
+if errorlevel 1 (
+    call :fail "这个 Multisim 构建不在已验证列表里，已拒绝启动。"
+    echo   multisim.exe        "%H1%"
+    echo   LibraryAccess.dll   "%H2%"
+    echo   WidgetLibrary.dll   "%H3%"
+    echo   如果这是 14.0 的其他小版本，请把上面三行哈希和 logs\launch.log 反馈给维护者。
+    goto :end
+)
+
+rem ---- 5. 兼容运行时 5 个文件必须与固定哈希一致
+rem      想替换为自己修改过的 Locale Emulator（LGPL 允许）：set MSCOMPAT_ALLOW_CUSTOM_RUNTIME=1 后哈希不符只警告
+for /f "usebackq tokens=2,3 delims=," %%a in (`findstr /b /l /c:"R," "%GATE%"`) do call :chkrt "%%a" "%%b"
+if not "%BAD%"=="0" (
+    if defined MSCOMPAT_ALLOW_CUSTOM_RUNTIME (
+        echo  [警告] 已设置 MSCOMPAT_ALLOW_CUSTOM_RUNTIME，使用未经验证的运行时文件。
+    ) else (
+        call :fail "兼容运行时文件缺失或被改动，已拒绝启动。请重新运行安装脚本修复。"
+        goto :end
+    )
+)
+
+rem ---- 6. 系统画像：只提示，不阻断
+set "BUILDNO="
+for /f "tokens=3" %%a in ('reg query "HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion" /v CurrentBuildNumber 2^>nul ^| findstr /i "CurrentBuildNumber"') do set "BUILDNO=%%a"
+if defined BUILDNO if %BUILDNO% lss 26100 (
+    echo  [提示] 本机 Windows 版本号是 %BUILDNO%，低于 26100（Windows 11 24H2）。
+    echo         这个故障主要出现在 24H2 及以上的中文系统；本机可能不需要兼容层，仍按你的要求继续。
+)
+
+rem ---- 7. 启动。Multisim 是 32 位程序，让它拿到 32 位的 Common Files 路径。
+set "CPF=%CommonProgramFiles(x86)%"
+if not defined CPF set "CPF=%ProgramFiles(x86)%\Common Files"
+set "CommonProgramFiles=%CPF%"
+call :log "检查通过 %MS%"
+if defined CHECKONLY (
+    echo  [检查模式] 所有检查通过，未启动 Multisim。
+    goto :end
+)
+echo  正在启动 Multisim ...
+call :log "启动 %MS%"
+start "" /d "%RT%" "%RT%\LEProc.exe" -runas %LEGUID% "%MS%"
+
+rem 最多等 20 秒，确认 multisim.exe 进程出现
+set /a TRIES=0
+:wait
+ping -n 2 127.0.0.1 >nul
+call :isrunning
+if not errorlevel 1 goto :started
+set /a TRIES+=1
+if %TRIES% lss 20 goto :wait
+call :fail "20 秒内没有看到 multisim.exe 进程。可能被安全软件拦截（Locale Emulator 需要注入进程）。"
+echo   请查看 logs\launch.log，或运行 Multisim兼容检查.cmd 后反馈。
+goto :end
+
+:started
+echo  已启动。界面显示英文是正常的，这是兼容环境的效果。
+call :log "启动成功"
+timeout /t 3 >nul 2>&1
+exit /b 0
+
+:end
+echo.
+if "%RC%"=="0" exit /b 0
+if defined MSCOMPAT_NOPAUSE exit /b 1
+pause
+exit /b 1
+
+rem ======================= 子程序 =======================
+:fail
+set "RC=1"
+echo.
+echo  [错误] %~1
+call :log "失败：%~1"
+exit /b 0
+
+:log
+if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>&1
+>>"%LOGDIR%\launch.log" echo %date% %time% %~1
+exit /b 0
+
+:isrunning
+tasklist /fi "imagename eq multisim.exe" /nh /fo csv 2>nul | findstr /i /b /c:"\"multisim.exe\"" >nul
+exit /b %errorlevel%
+
+:findms
+set "MSKEY=HKLM\SOFTWARE\WOW6432Node\National Instruments\Circuit Design Suite\14.0\MSI Parts\Core"
+for /f "skip=2 tokens=2,*" %%a in ('reg query "%MSKEY%" /v Path /reg:64 2^>nul') do set "MS=%%b"
+if not defined MS exit /b 0
+if "%MS:~-1%"=="\" set "MS=%MS:~0,-1%"
+set "MS=%MS%\multisim.exe"
+exit /b 0
+
+:sha
+set "%~2="
+for /f "usebackq skip=1 delims=" %%h in (`certutil -hashfile "%~1" SHA256 2^>nul`) do if not defined %~2 set "%~2=%%h"
+if defined %~2 call set "%~2=%%%~2: =%%"
+exit /b 0
+
+:chkrt
+set "HX="
+call :sha "%RT%\%~2" HX
+if /i not "%HX%"=="%~1" (
+    set "BAD=1"
+    echo   哈希不符或文件缺失：%~2
+)
+exit /b 0

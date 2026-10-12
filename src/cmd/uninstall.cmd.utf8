@@ -1,0 +1,103 @@
+@echo off
+rem SPDX-License-Identifier: MIT
+rem 卸载 Multisim 兼容启动器：删除桌面快捷方式和本安装目录。
+rem 不碰 NI 的任何文件、注册表、数据库、许可证，也不改系统设置。
+rem 本文件发布时为 GBK + CRLF（见 tools\Build-Release.ps1）。
+rem 用法：卸载.cmd [/y]       /y = 不再询问
+rem 为了能删除自己所在的目录，第一阶段会把自己复制到临时目录，由副本完成删除。
+setlocal EnableExtensions DisableDelayedExpansion
+
+if /i "%~1"=="/stage2" goto :stage2
+
+set "ROOT=%~dp0"
+set "ROOT=%ROOT:~0,-1%"
+set "YES="
+if /i "%~1"=="/y" set "YES=/y"
+
+rem ---- 第一阶段：先做安全检查，再交给临时副本
+call :verify "%ROOT%"
+if errorlevel 1 exit /b 1
+
+set "TMPCMD=%TEMP%\mscompat-uninstall-%RANDOM%%RANDOM%.cmd"
+copy /y "%~f0" "%TMPCMD%" >nul
+if errorlevel 1 (
+    echo  [错误] 无法复制到临时目录，卸载中止。
+    pause
+    exit /b 1
+)
+rem 参数用环境变量传给副本：路径里可能有括号、与号、中文，放在 start 命令行里会被 cmd /c 的引号规则拆坏。
+set "MSCOMPAT_UN_ROOT=%ROOT%"
+set "MSCOMPAT_UN_YES=%YES%"
+start "Multisim 兼容启动器卸载" /d "%TEMP%" cmd /d /c ""%TMPCMD%" /stage2"
+exit
+
+:stage2
+set "ROOT=%MSCOMPAT_UN_ROOT%"
+set "YES=%MSCOMPAT_UN_YES%"
+if not defined ROOT (
+    echo  [错误] 缺少安装目录参数，卸载中止。
+    pause
+    exit /b 1
+)
+cd /d "%TEMP%"
+title Multisim 兼容启动器卸载
+call :verify "%ROOT%"
+if errorlevel 1 goto :done
+
+set "SHORTCUT="
+for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /l /c:"SHORTCUT=" "%ROOT%\config\install.txt"`) do set "SHORTCUT=%%b"
+
+echo.
+echo  将要删除：
+echo    安装目录："%ROOT%"
+if defined SHORTCUT echo    桌面快捷方式："%SHORTCUT%"
+echo  不会改动：Multisim 本体、NI 注册表、数据库、许可证、系统设置。
+echo.
+if not "%YES%"=="/y" (
+    choice /c YN /n /m " 确认卸载？按 Y 继续，按 N 取消："
+    if errorlevel 2 (
+        echo  已取消。
+        goto :done
+    )
+)
+
+rem 等第一阶段的窗口退出，释放对安装目录的占用
+ping -n 3 127.0.0.1 >nul
+
+if defined SHORTCUT if exist "%SHORTCUT%" (
+    del /f /q "%SHORTCUT%" >nul 2>&1
+    if exist "%SHORTCUT%" (echo  [警告] 快捷方式没能删除："%SHORTCUT%") else echo  已删除快捷方式。
+)
+
+rmdir /s /q "%ROOT%" >nul 2>&1
+if exist "%ROOT%" (
+    echo  [警告] 安装目录没能完全删除，可能有文件被占用。请关闭 Multisim 后重试，或手动删除：
+    echo    "%ROOT%"
+    set "RC=1"
+) else (
+    echo  已删除安装目录。卸载完成。
+)
+
+:done
+echo.
+if not "%YES%"=="/y" pause
+(goto) 2>nul & del /f /q "%~f0"
+
+rem ======================= 子程序 =======================
+rem 只有同时满足这些条件才允许删除：是我们自己的安装目录，且不是盘符根目录、不在 NI 目录里。
+:verify
+set "V=%~1"
+if not exist "%V%\config\install.txt" goto :vbad
+if not exist "%V%\config\cmd-gate.txt" goto :vbad
+if not exist "%V%\runtime\locale-emulator\LEProc.exe" goto :vbad
+if "%V:~-1%"==":" goto :vbad
+if "%V:~-2%"==":\" goto :vbad
+if not "%V:National Instruments=%"=="%V%" goto :vbad
+exit /b 0
+:vbad
+echo.
+echo  [错误] 这个目录不像是 Multisim 兼容启动器的安装目录，已拒绝删除任何东西：
+echo    "%V%"
+echo  卸载.cmd 必须放在安装目录里运行。
+pause
+exit /b 1
