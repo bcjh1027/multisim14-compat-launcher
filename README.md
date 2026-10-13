@@ -83,7 +83,9 @@ irm https://github.com/bcjh1027/multisim14-compat-launcher/releases/latest/downl
 
 - 数据库错误消失，Ctrl+W 元件库可用；
 - 12V 电源 + 3 个 1kΩ 电阻串联，直流工作点分析得到 V(2)=8V、V(3)=4V，与手算一致（[截图](docs/evidence/dc-op-3x1k-12V.png)）；
-- 连续 10 次手动启动无故障。
+- 封装前的兼容启动方案连续 10 次手动启动无故障。
+
+以上是维护者本机对兼容方案的验证，**不等于当前发布包已完成端到端验收**。封装后的启动器尚需重新验证元件库、仿真、保存后重开，以及干净 Windows 账户下的安装与卸载。
 
 **没有验证**：中文路径的工程文件、用户元件库的保存、第三方插件、其他 14.x 小版本、其他 Windows 版本。细节与反馈方式见 [docs/TEST-RECORD.md](docs/TEST-RECORD.md)。你的构建如果不在已验证列表里，启动器会拒绝并打印三个哈希，欢迎反馈。
 

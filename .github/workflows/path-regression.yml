@@ -1,0 +1,17 @@
+name: Windows path regression
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  path-regression:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run isolated path and installer regressions
+        shell: powershell
+        run: ./tests/Run-PathRegression.ps1

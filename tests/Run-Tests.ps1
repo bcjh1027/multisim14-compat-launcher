@@ -76,6 +76,8 @@ Ok ((Disp '14.0.0.0' '14.0.593.0' $b0.MultisimSha256 '14.0.0.0' ('B' * 64) $b0.W
 Ok ((Disp '14.3.0.0' '14.3.1482.0' ('A' * 64) '14.3.1500.0' '1270453B8ED94FDBD4BB554493898BB036EA45DC989A99B5AC603AB270F7A68B' ('C' * 64)) -eq 'OfficialFixAvailable') '14.3.3 的 NI 官方修复 => 拒绝兼容层'
 Ok ((Disp '15.0.0.0' '15.0.0.0' ('A' * 64) '15.0.0.0' ('B' * 64) ('C' * 64)) -eq 'Unsupported') '14.x 之外 => Unsupported'
 
+& (Join-Path $root 'tests\Run-PathRegression.ps1')
+
 # ---- 5. 运行时 --------------------------------------------------------------------------------
 $rt = Get-RuntimeCompatibilityState -RepositoryRoot $root -Manifest $manifest -RuntimeRoot (Join-Path $root 'runtime\locale-emulator')
 Ok $rt.Valid 'runtime\locale-emulator 哈希、x86、配置（含 GUID）全部有效'
@@ -133,16 +135,28 @@ try {
     $out = & $sb -InstallDir $inst -ZipPath $zip -NoShortcut -Yes 6>&1 | Out-String
     Ok (Test-Path -LiteralPath (Join-Path $inst 'config\install.txt')) '安装到含中文/空格/与号/括号的目录成功'
 
-    $wrap = Join-Path $tmp 'w.cmd'
     $gbk = [Text.Encoding]::GetEncoding(936)
     function Run-Cmd([string]$Script, [string]$CmdArgs, [hashtable]$Env = @{}) {
-        $lines = @('@echo off')
-        foreach ($k in $Env.Keys) { $lines += "set `"$k=$($Env[$k])`"" }
-        $lines += "call `"$Script`" $CmdArgs"
-        $lines += 'exit /b %errorlevel%'
-        [IO.File]::WriteAllBytes($wrap, $gbk.GetBytes(($lines -join "`r`n") + "`r`n"))
-        $o = & $env:ComSpec /c "`"$wrap`"" 2>&1 | Out-String
-        [pscustomobject]@{ Code = $LASTEXITCODE; Text = $o }
+        # Pass the path as environment data, not CALL source in a generated wrapper.
+        $psi = [Diagnostics.ProcessStartInfo]::new()
+        $psi.FileName = $env:ComSpec
+        $psi.Arguments = '/d /v:on /c "chcp 936 >nul & "!MSCOMPAT_TEST_SCRIPT!" ' + $CmdArgs + '"'
+        $psi.UseShellExecute = $false
+        $psi.CreateNoWindow = $true
+        $psi.WorkingDirectory = $tmp
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError = $true
+        $psi.StandardOutputEncoding = $gbk
+        $psi.StandardErrorEncoding = $gbk
+        $psi.EnvironmentVariables['MSCOMPAT_TEST_SCRIPT'] = $Script
+        foreach ($k in $Env.Keys) { $psi.EnvironmentVariables[$k] = [string]$Env[$k] }
+        $p = [Diagnostics.Process]::Start($psi)
+        $stdout = $p.StandardOutput.ReadToEndAsync()
+        $stderr = $p.StandardError.ReadToEndAsync()
+        try {
+            if (-not $p.WaitForExit(30000)) { $p.Kill(); throw 'CMD test timed out.' }
+            [pscustomobject]@{ Code = $p.ExitCode; Text = $stdout.Result + $stderr.Result }
+        } finally { $p.Dispose() }
     }
     $entry = Join-Path $inst 'Multisim兼容启动.cmd'
     $env:MSCOMPAT_NOPAUSE = '1'

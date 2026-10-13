@@ -266,19 +266,25 @@
 
         $work = Join-Path ([IO.Path]::GetTempPath()) ('mscompat-' + [guid]::NewGuid().ToString('N'))
         [void](New-Item -ItemType Directory -Path $work -Force)
-        $stage = $dir + '.new'
-        $backup = $dir + '.old'
+        # Own one uniquely created sibling workspace; never delete predictable sibling names.
+        $parent = Split-Path -Parent $dir
+        if (-not (Test-Path -LiteralPath $parent)) { [void](New-Item -ItemType Directory -Path $parent -Force) }
+        $transaction = Join-Path $parent ('mscompat-transaction-' + [guid]::NewGuid().ToString('N'))
+        $transactionOwned = $false
+        $backupOwned = $false
+        $stage = Join-Path $transaction 'stage'
+        $backup = Join-Path $transaction 'backup'
         try {
             Say (T '准备安装包') 'step'
             $zip = Get-VerifiedZip $work
-            if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+            [void](New-Item -ItemType Directory -Path $transaction -ErrorAction Stop)
+            $transactionOwned = $true
             Expand-ZipSafely $zip $stage
 
             # The zip has one top-level folder 'MultisimCompat'; flatten it.
             $inner = Join-Path $stage 'MultisimCompat'
             if (Test-Path -LiteralPath $inner -PathType Container) {
-                $flat = $dir + '.flat'
-                if (Test-Path -LiteralPath $flat) { Remove-Item -LiteralPath $flat -Recurse -Force }
+                $flat = Join-Path $transaction 'flat'
                 Move-Item -LiteralPath $inner -Destination $flat
                 Remove-Item -LiteralPath $stage -Recurse -Force
                 Move-Item -LiteralPath $flat -Destination $stage
@@ -315,11 +321,17 @@
 
             # Swap in with rollback.
             Say (T '写入安装目录') 'step'
-            if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force }
-            if (Test-Path -LiteralPath $dir) { Move-Item -LiteralPath $dir -Destination $backup }
+            if (Test-Path -LiteralPath $dir) {
+                Move-Item -LiteralPath $dir -Destination $backup
+                $backupOwned = $true
+            }
             try { Move-Item -LiteralPath $stage -Destination $dir }
             catch {
-                if (Test-Path -LiteralPath $backup) { Move-Item -LiteralPath $backup -Destination $dir -ErrorAction SilentlyContinue }
+                if ($backupOwned) {
+                    # If rollback fails, leave the original install in backup for recovery.
+                    Move-Item -LiteralPath $backup -Destination $dir -ErrorAction Stop
+                    $backupOwned = $false
+                }
                 throw
             }
 
@@ -332,7 +344,10 @@
             $infoLines = @(('VERSION=' + $Pinned.Version), ('INSTALLED=' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss')))
             if ($lnk) { $infoLines += ('SHORTCUT=' + $lnk) }
             [IO.File]::WriteAllLines((Join-Path $dir 'config\install.txt'), $infoLines, (Get-OemEncoding))
-            if (Test-Path -LiteralPath $backup) { Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue }
+            if ($backupOwned) {
+                Remove-Item -LiteralPath $backup -Recurse -Force
+                $backupOwned = $false
+            }
 
             Say ((T '安装完成：') + $dir) 'ok'
             Say (T '之后双击桌面快捷方式，或安装目录里的“Multisim兼容启动.cmd”即可。') 'info'
@@ -340,7 +355,11 @@
         }
         finally {
             if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
-            if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+            if ($transactionOwned -and -not $backupOwned) {
+                Remove-Item -LiteralPath $transaction -Recurse -Force -ErrorAction SilentlyContinue
+            } elseif ($backupOwned) {
+                Say ('Previous installation preserved at: ' + $backup) 'warn'
+            }
         }
     }
 
@@ -415,7 +434,12 @@
         if (-not (Test-IsOurInstall $dir)) { throw ((T '尚未安装：') + $dir) }
         $cmd = Join-Path $dir (T 'Multisim兼容检查.cmd')
         Say ((T '运行检查：') + $cmd) 'step'
-        & $env:ComSpec /c ('"' + $cmd + '"')
+        $previousEntry = $env:MSCOMPAT_CHECK_ENTRY
+        try {
+            $env:MSCOMPAT_CHECK_ENTRY = $cmd
+            & $env:ComSpec /d /v:on /c '""!MSCOMPAT_CHECK_ENTRY!""'
+            if ($LASTEXITCODE -ne 0) { throw ('Compatibility check failed: ' + $LASTEXITCODE) }
+        } finally { $env:MSCOMPAT_CHECK_ENTRY = $previousEntry }
     }
 
     # ---- main ---------------------------------------------------------------------------------
