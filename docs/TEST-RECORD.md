@@ -129,4 +129,6 @@ Multisim兼容检查.cmd 生成的 logs\check-latest.txt：
 
 安装程序现在使用独立随机事务目录；失败回滚未完成时保留备份并输出路径，不清理仍用于恢复的原安装。
 
-本节是新增测试范围说明，**不是通过记录**。此前的 56 项通过记录仅对应原版本。当前修改需要 Windows 工作流或维护者本机实际运行；它不替代真实 Multisim 端到端验收。
+2026-10-13 已在 GitHub Actions 的 Windows Server 2025 / Windows PowerShell 5.1 上实测：**28 项通过，0 失败**，提交 `8b9fa9affd0090a3352aa5cd2f0d190f5e7c8497`，见[运行记录](https://github.com/bcjh1027/multisim14-compat-launcher/actions/runs/38395338528)。此外覆盖 PowerShell `-Action Check` 的特殊字符路径调用、更新失败后的原安装恢复，以及回滚也失败时保留备份。
+
+该记录是隔离的脚本行为测试：使用假文件和合成 ZIP，不代表 Windows 11 上真实 Multisim 的启动、元件库、仿真、中文工程保存已经通过。此前的 56 项记录仅对应原版本。
