@@ -30,7 +30,6 @@ function Invoke-Cmd([string]$Path, [string]$Arguments = '') {
     # No generated wrapper: literal percent signs must not be written unescaped into batch source.
     $psi = [Diagnostics.ProcessStartInfo]::new()
     $psi.FileName = $env:ComSpec
-    $psi.Arguments = '/d /v:on /c ""!MSCOMPAT_TEST_SCRIPT!" ' + $Arguments + '"'
     $psi.UseShellExecute = $false
     $psi.CreateNoWindow = $true
     $psi.WorkingDirectory = $tmp
@@ -127,8 +126,43 @@ try {
         Assert (([IO.File]::ReadAllText((Join-Path ($dest + $suffix) 'keep.txt'))) -eq $suffix) ("Update preserves unrelated $suffix directory")
     }
     Assert (@(Get-ChildItem -LiteralPath $tmp -Directory -Filter 'mscompat-transaction-*').Count -eq 0) 'Successful installation cleans only its own transaction directory'
+    # Exercise the PowerShell Check action's child-command boundary independently of GBK UI text.
+    $installedCheck = Join-Path $dest 'Multisim兼容检查.cmd'
+    Write-Cmd $installedCheck "@echo off`r`nsetlocal DisableDelayedExpansion`r`nexit /b 7`r`n"
+    & $installer -Action Check -InstallDir $dest
+    Assert ($global:LASTEXITCODE -eq 1) 'PowerShell Check reports a child failure through its special-character path'
+    Write-Cmd $installedCheck "@echo off`r`nsetlocal DisableDelayedExpansion`r`nexit /b 0`r`n"
+    & $installer -Action Check -InstallDir $dest
+    Assert ($global:LASTEXITCODE -eq 0) 'PowerShell Check runs a successful child through its special-character path'
+
+    # Inject only the filesystem swap failures; execute real moves everywhere else.
+    Write-Text (Join-Path $dest 'original.txt') 'original installation'
+    $script:failRollback = $false
+    function Move-Item {
+        [CmdletBinding()]
+        param([string]$LiteralPath, [string]$Destination)
+        $leaf = Split-Path -Leaf $LiteralPath
+        if ($Destination -eq $dest -and $leaf -eq 'stage') { throw 'Injected stage swap failure' }
+        if ($Destination -eq $dest -and $leaf -eq 'backup' -and $script:failRollback) { throw 'Injected rollback failure' }
+        Microsoft.PowerShell.Management\Move-Item @PSBoundParameters
+    }
+    try {
+        & $installer -Action Update -InstallDir $dest -ZipPath $zip -ExpectedSha256 $zipHash -NoShortcut -Yes
+        Assert (([IO.File]::ReadAllText((Join-Path $dest 'original.txt'))) -eq 'original installation') 'Failed swap restores the original installation'
+        Assert (@(Get-ChildItem -LiteralPath $tmp -Directory -Filter 'mscompat-transaction-*').Count -eq 0) 'Successful rollback cleans its transaction directory'
+        $script:failRollback = $true
+        & $installer -Action Update -InstallDir $dest -ZipPath $zip -ExpectedSha256 $zipHash -NoShortcut -Yes
+        $transactions = @(Get-ChildItem -LiteralPath $tmp -Directory -Filter 'mscompat-transaction-*')
+        Assert ($transactions.Count -eq 1) 'Failed rollback keeps the transaction directory for recovery'
+        Assert (([IO.File]::ReadAllText((Join-Path $transactions[0].FullName 'backup\original.txt'))) -eq 'original installation') 'Failed rollback preserves the original files in backup'
+        Microsoft.PowerShell.Management\Move-Item -LiteralPath (Join-Path $transactions[0].FullName 'backup') -Destination $dest
+        Remove-Item -LiteralPath $transactions[0].FullName -Recurse -Force
+    } finally { Remove-Item Function:\Move-Item }
+    $global:LASTEXITCODE = 0
     $rejected = Join-Path $tmp 'rejected'
     & $installer -InstallDir $rejected -ZipPath $zip -ExpectedSha256 ('0' * 64) -NoShortcut -Yes
+    Assert ($global:LASTEXITCODE -eq 1) 'Installer reports the expected hash rejection'
+    $global:LASTEXITCODE = 0  # The expected negative test must not fail the Actions shell.
     Assert (-not (Test-Path -LiteralPath $rejected)) 'Wrong ZIP hash creates no installation'
     Assert (@(Get-ChildItem -LiteralPath $tmp -Directory -Filter 'mscompat-transaction-*').Count -eq 0) 'Rejected ZIP leaves no transaction directory'
     Write-Host "Passed: $script:passed"
