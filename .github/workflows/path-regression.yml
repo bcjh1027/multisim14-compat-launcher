@@ -2,7 +2,7 @@ name: Windows path regression
 on:
   pull_request:
   push:
-    branches: [main, fix/installer-cmd-path-safety]
+    branches: [main]
   workflow_dispatch:
 permissions:
   contents: read

@@ -78,7 +78,8 @@ set "H2=%HASH_VALUE%"
 set "HASH_PATH=%MSDIR%\WidgetLibrary.dll"
 call :sha
 set "H3=%HASH_VALUE%"
-findstr /i /b /l /c:"B,%H1%,%H2%,%H3%," "%GATE%" >nul 2>&1
+rem Let CMD open the Unicode path; FINDSTR filename arguments depend on the system code page.
+findstr /i /b /l /c:"B,%H1%,%H2%,%H3%," < "%GATE%" >nul 2>&1
 if errorlevel 1 (
     call :fail "这个 Multisim 构建不在已验证列表里，已拒绝启动。"
     echo   multisim.exe        "%H1%"
