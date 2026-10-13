@@ -11,8 +11,22 @@ set "ROOT=%ROOT:~0,-1%"
 set "OUT=%ROOT%\logs\check-latest.txt"
 if not exist "%ROOT%\logs" mkdir "%ROOT%\logs" >nul 2>&1
 
-(
-    echo ===== Multisim 14.0 兼容检查 =====
+set "MSCOMPAT_CHECK_ENTRY=%ROOT%\Multisim兼容启动.cmd"
+set "MSCOMPAT_NOPAUSE=1"
+call :report > "%OUT%" 2>&1
+set "RC=%errorlevel%"
+
+type "%OUT%"
+echo.
+echo 以上内容已保存到：
+echo   "%OUT%"
+echo 反馈前请检查日志里的安装路径，路径可能包含用户名。
+echo.
+if not defined MSCOMPAT_CHECK_NOPAUSE pause
+exit /b %RC%
+
+:report
+echo ===== Multisim 14.0 兼容检查 =====
     echo 时间：%date% %time%
     echo 安装目录："%ROOT%"
     echo.
@@ -24,21 +38,13 @@ if not exist "%ROOT%\logs" mkdir "%ROOT%\logs" >nul 2>&1
     for /f "tokens=3" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Nls\CodePage" /v ACP 2^>nul ^| findstr /i "ACP"') do echo ANSI 代码页：%%a
     echo.
     echo --- 启动器检查（不会启动 Multisim） ---
-    set "MSCOMPAT_NOPAUSE=1"
-    call "%ROOT%\Multisim兼容启动.cmd" /check
-    echo 启动器检查退出码：%errorlevel%
+    rem Expand the entry path in the child, after command syntax has been parsed.
+    "%ComSpec%" /d /v:on /c ""!MSCOMPAT_CHECK_ENTRY!" /check"
+    set "CHECK_RC=%errorlevel%"
+    echo 启动器检查退出码：%CHECK_RC%
     echo.
     echo --- 已有进程 ---
     tasklist /fi "imagename eq multisim.exe" /nh
     echo.
     echo ===== 完成 =====
-) > "%OUT%" 2>&1
-
-type "%OUT%"
-echo.
-echo 以上内容已保存到：
-echo   "%OUT%"
-echo 反馈问题时请把这个文件一起发给维护者（里面只有系统版本和文件哈希，没有个人文件内容）。
-echo.
-pause
-exit /b 0
+exit /b %CHECK_RC%

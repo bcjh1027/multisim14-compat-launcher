@@ -69,9 +69,15 @@ if exist "%MS%.le.config" (
 )
 
 rem ---- 4. 三个 NI 文件必须与已验证的构建完全一致
-call :sha "%MS%" H1
-call :sha "%MSDIR%\LibraryAccess.dll" H2
-call :sha "%MSDIR%\WidgetLibrary.dll" H3
+set "HASH_PATH=%MS%"
+call :sha
+set "H1=%HASH_VALUE%"
+set "HASH_PATH=%MSDIR%\LibraryAccess.dll"
+call :sha
+set "H2=%HASH_VALUE%"
+set "HASH_PATH=%MSDIR%\WidgetLibrary.dll"
+call :sha
+set "H3=%HASH_VALUE%"
 findstr /i /b /l /c:"B,%H1%,%H2%,%H3%," "%GATE%" >nul 2>&1
 if errorlevel 1 (
     call :fail "这个 Multisim 构建不在已验证列表里，已拒绝启动。"
@@ -84,7 +90,12 @@ if errorlevel 1 (
 
 rem ---- 5. 兼容运行时 5 个文件必须与固定哈希一致
 rem      想替换为自己修改过的 Locale Emulator（LGPL 允许）：set MSCOMPAT_ALLOW_CUSTOM_RUNTIME=1 后哈希不符只警告
-for /f "usebackq tokens=2,3 delims=," %%a in (`findstr /b /l /c:"R," "%GATE%"`) do call :chkrt "%%a" "%%b"
+rem Read the file directly: no path is interpolated into a second cmd.exe or CALL parse.
+for /f "usebackq tokens=1-3 delims=," %%a in ("%GATE%") do if "%%a"=="R" (
+    set "RT_EXPECTED=%%b"
+    set "RT_NAME=%%c"
+    call :chkrt
+)
 if not "%BAD%"=="0" (
     if defined MSCOMPAT_ALLOW_CUSTOM_RUNTIME (
         echo  [警告] 已设置 MSCOMPAT_ALLOW_CUSTOM_RUNTIME，使用未经验证的运行时文件。
@@ -106,13 +117,15 @@ rem ---- 7. 启动。Multisim 是 32 位程序，让它拿到 32 位的 Common F
 set "CPF=%CommonProgramFiles(x86)%"
 if not defined CPF set "CPF=%ProgramFiles(x86)%\Common Files"
 set "CommonProgramFiles=%CPF%"
-call :log "检查通过 %MS%"
+set "LOG_MESSAGE=检查通过 %MS%"
+call :log
 if defined CHECKONLY (
     echo  [检查模式] 所有检查通过，未启动 Multisim。
     goto :end
 )
 echo  正在启动 Multisim ...
-call :log "启动 %MS%"
+set "LOG_MESSAGE=启动 %MS%"
+call :log
 start "" /d "%RT%" "%RT%\LEProc.exe" -runas %LEGUID% "%MS%"
 
 rem 最多等 20 秒，确认 multisim.exe 进程出现
@@ -129,7 +142,8 @@ goto :end
 
 :started
 echo  已启动。界面显示英文是正常的，这是兼容环境的效果。
-call :log "启动成功"
+set "LOG_MESSAGE=启动成功"
+call :log
 timeout /t 3 >nul 2>&1
 exit /b 0
 
@@ -145,12 +159,16 @@ rem ======================= 子程序 =======================
 set "RC=1"
 echo.
 echo  [错误] %~1
-call :log "失败：%~1"
+set "LOG_MESSAGE=失败：%~1"
+call :log
 exit /b 0
 
 :log
 if not exist "%LOGDIR%" mkdir "%LOGDIR%" >nul 2>&1
->>"%LOGDIR%\launch.log" echo %date% %time% %~1
+rem Late expansion emits path characters as data, including percent, ampersand and bang.
+setlocal EnableDelayedExpansion
+>>"!LOGDIR!\launch.log" echo(!date! !time! !LOG_MESSAGE!
+endlocal
 exit /b 0
 
 :isrunning
@@ -166,16 +184,18 @@ set "MS=%MS%\multisim.exe"
 exit /b 0
 
 :sha
-set "%~2="
-for /f "usebackq skip=1 delims=" %%h in (`certutil -hashfile "%~1" SHA256 2^>nul`) do if not defined %~2 set "%~2=%%h"
-if defined %~2 call set "%~2=%%%~2: =%%"
+rem HASH_PATH is data, never a CALL argument or an expanded FOR /F command string.
+rem The child expands it late; embedded percent/ampersand/bang characters stay literal.
+set "HASH_VALUE="
+for /f "skip=1 delims=" %%h in ('cmd /d /v:on /c certutil -hashfile "!HASH_PATH!" SHA256 2^>nul') do if not defined HASH_VALUE set "HASH_VALUE=%%h"
+if defined HASH_VALUE set "HASH_VALUE=%HASH_VALUE: =%"
 exit /b 0
 
 :chkrt
-set "HX="
-call :sha "%RT%\%~2" HX
-if /i not "%HX%"=="%~1" (
+set "HASH_PATH=%RT%\%RT_NAME%"
+call :sha
+if /i not "%HASH_VALUE%"=="%RT_EXPECTED%" (
     set "BAD=1"
-    echo   哈希不符或文件缺失：%~2
+    echo   哈希不符或文件缺失："%RT_NAME%"
 )
 exit /b 0

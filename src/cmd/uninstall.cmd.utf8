@@ -15,20 +15,21 @@ set "YES="
 if /i "%~1"=="/y" set "YES=/y"
 
 rem ---- 第一阶段：先做安全检查，再交给临时副本
-call :verify "%ROOT%"
+call :verify
 if errorlevel 1 exit /b 1
 
 set "TMPCMD=%TEMP%\mscompat-uninstall-%RANDOM%%RANDOM%.cmd"
 copy /y "%~f0" "%TMPCMD%" >nul
 if errorlevel 1 (
     echo  [错误] 无法复制到临时目录，卸载中止。
-    pause
+    if not "%YES%"=="/y" pause
     exit /b 1
 )
 rem 参数用环境变量传给副本：路径里可能有括号、与号、中文，放在 start 命令行里会被 cmd /c 的引号规则拆坏。
 set "MSCOMPAT_UN_ROOT=%ROOT%"
 set "MSCOMPAT_UN_YES=%YES%"
-start "Multisim 兼容启动器卸载" /d "%TEMP%" cmd /d /c ""%TMPCMD%" /stage2"
+set "MSCOMPAT_UN_SCRIPT=%TMPCMD%"
+start "Multisim 兼容启动器卸载" /d "%TEMP%" "%ComSpec%" /d /v:on /c ""!MSCOMPAT_UN_SCRIPT!" /stage2"
 exit
 
 :stage2
@@ -36,16 +37,16 @@ set "ROOT=%MSCOMPAT_UN_ROOT%"
 set "YES=%MSCOMPAT_UN_YES%"
 if not defined ROOT (
     echo  [错误] 缺少安装目录参数，卸载中止。
-    pause
+    if not "%YES%"=="/y" pause
     exit /b 1
 )
 cd /d "%TEMP%"
 title Multisim 兼容启动器卸载
-call :verify "%ROOT%"
+call :verify
 if errorlevel 1 goto :done
 
 set "SHORTCUT="
-for /f "usebackq tokens=1,* delims==" %%a in (`findstr /b /l /c:"SHORTCUT=" "%ROOT%\config\install.txt"`) do set "SHORTCUT=%%b"
+for /f "usebackq tokens=1,* delims==" %%a in ("%ROOT%\config\install.txt") do if "%%a"=="SHORTCUT" set "SHORTCUT=%%b"
 
 echo.
 echo  将要删除：
@@ -86,7 +87,7 @@ if not "%YES%"=="/y" pause
 rem ======================= 子程序 =======================
 rem 只有同时满足这些条件才允许删除：是我们自己的安装目录，且不是盘符根目录、不在 NI 目录里。
 :verify
-set "V=%~1"
+set "V=%ROOT%"
 if not exist "%V%\config\install.txt" goto :vbad
 if not exist "%V%\config\cmd-gate.txt" goto :vbad
 if not exist "%V%\runtime\locale-emulator\LEProc.exe" goto :vbad
@@ -99,5 +100,5 @@ echo.
 echo  [错误] 这个目录不像是 Multisim 兼容启动器的安装目录，已拒绝删除任何东西：
 echo    "%V%"
 echo  卸载.cmd 必须放在安装目录里运行。
-pause
+if not "%YES%"=="/y" pause
 exit /b 1
